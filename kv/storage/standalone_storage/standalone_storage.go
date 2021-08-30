@@ -39,7 +39,7 @@ func (s *StandAloneStorage) Stop() error {
 func (s *StandAloneStorage) Reader(ctx *kvrpcpb.Context) (storage.StorageReader, error) {
 	// Your Code Here (1).
 	return &StandAloneStorageReader{
-		storage: s,
+		txn: s.Kv.NewTransaction(false),
 	}, nil
 }
 
@@ -62,20 +62,21 @@ func (s *StandAloneStorage) Write(ctx *kvrpcpb.Context, batch []storage.Modify) 
 }
 
 type StandAloneStorageReader struct {
-	storage *StandAloneStorage
+	txn *badger.Txn
 }
 
 func (reader *StandAloneStorageReader) GetCF(cf string, key []byte) ([]byte, error) {
-	val, _ := engine_util.GetCF(reader.storage.Kv, cf, key)
-	return val, nil
+	val, err := engine_util.GetCFFromTxn(reader.txn, cf, key)
+	if err == badger.ErrKeyNotFound {
+		return nil, nil
+	}
+	return val, err
 }
 
 func (reader *StandAloneStorageReader) IterCF(cf string) engine_util.DBIterator {
-	txn := reader.storage.Kv.NewTransaction(false)
-	//defer txn.Discard()
-	return engine_util.NewCFIterator(cf, txn)
+	return engine_util.NewCFIterator(cf, reader.txn)
 }
 
 func (reader *StandAloneStorageReader) Close() {
-	reader.storage.Kv.Close()
+	reader.txn.Discard()
 }
